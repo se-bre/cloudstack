@@ -271,3 +271,16 @@ CALL `cloud`.`IDEMPOTENT_ADD_COLUMN`('cloud.disk_offering', 'error_policy', 'VAR
 
 -- Rename persisted FlashArray provider name (plugin getName() changed from 'Flash Array' to 'FlashArray')
 UPDATE `cloud`.`storage_pool` SET `storage_provider_name` = 'FlashArray' WHERE `storage_provider_name` = 'Flash Array';
+
+-- Hostnames of NIC secondary IPs, each published as its own line in the VR's /etc/hosts
+CREATE TABLE IF NOT EXISTS `cloud`.`nic_secondary_ip_hostnames` (
+    `id` bigint unsigned NOT NULL auto_increment COMMENT 'id',
+    `nic_secondary_ip_id` bigint unsigned NOT NULL COMMENT 'NIC secondary IP the hostname resolves to',
+    `network_id` bigint unsigned NOT NULL COMMENT 'Network of the secondary IP',
+    `hostname` varchar(255) NOT NULL COMMENT 'Lowercase RFC 1123 hostname or FQDN',
+    `created` datetime NOT NULL COMMENT 'date created',
+    PRIMARY KEY (`id`),
+    CONSTRAINT `fk_nic_secondary_ip_hostnames__nic_secondary_ip_id` FOREIGN KEY (`nic_secondary_ip_id`) REFERENCES `nic_secondary_ips`(`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_nic_secondary_ip_hostnames__network_id` FOREIGN KEY (`network_id`) REFERENCES `networks`(`id`),
+    UNIQUE KEY `uc_nic_secondary_ip_hostnames__network_id__hostname` (`network_id`, `hostname`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;

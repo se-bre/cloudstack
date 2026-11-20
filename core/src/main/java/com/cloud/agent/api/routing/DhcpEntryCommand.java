@@ -38,6 +38,8 @@ public class DhcpEntryCommand extends NetworkElementCommand {
     // which reflects whether the nic is the VM's default nic, not whether this entry may coexist with
     // other entries sharing the same MAC. See cs_dhcp.py's merge() on the VR for how this is consumed.
     private boolean associatedNetwork;
+    // True for a hostname-only entry (NIC secondary IP): published to the VR's /etc/hosts, no DHCP lease.
+    private boolean dnsOnly;
     boolean executeInSequence = false;
     boolean remove;
     Long leaseTime;
@@ -156,6 +158,14 @@ public class DhcpEntryCommand extends NetworkElementCommand {
 
     public void setDefault(boolean isDefault) {
         this.isDefault = isDefault;
+    }
+
+    public boolean isDnsOnly() {
+        return dnsOnly;
+    }
+
+    public void setDnsOnly(boolean dnsOnly) {
+        this.dnsOnly = dnsOnly;
     }
 
     public boolean isAssociatedNetwork() {

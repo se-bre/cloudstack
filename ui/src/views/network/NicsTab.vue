@@ -315,6 +315,29 @@
               icon="delete-outlined" />
             {{ ip.ipaddress }}
           </a-popconfirm>
+          <div v-if="ip.ipaddress && 'addHostnameToNicSecondaryIp' in $store.getters.apis" style="margin-top: 8px;">
+            <a-popconfirm
+              v-for="hostname in ip.hostnames || []"
+              :key="hostname"
+              :disabled="!('removeHostnameFromNicSecondaryIp' in $store.getters.apis)"
+              :title="$t('message.confirm.remove.hostname', { hostname })"
+              @confirm="removeSecondaryIpHostname(ip.id, hostname)"
+              :okText="$t('label.yes')"
+              :cancelText="$t('label.no')"
+            >
+              <!-- close.prevent keeps the tag; the popconfirm around it asks first -->
+              <a-tag :closable="'removeHostnameFromNicSecondaryIp' in $store.getters.apis" @close.prevent>
+                {{ hostname }}
+              </a-tag>
+            </a-popconfirm>
+            <a-input-search
+              v-model:value="newHostnames[ip.id]"
+              :placeholder="$t('label.add.hostname')"
+              :enterButton="$t('label.add')"
+              :loading="loadingNic"
+              style="width: 300px; margin-top: 4px;"
+              @search="addSecondaryIpHostname(ip.id)" />
+          </div>
         </a-list-item>
       </a-list>
     </a-modal>
@@ -402,6 +425,7 @@ export default {
       selectedNicId: '',
       newSecondaryIp: '',
       newSecondaryIpDescription: '',
+      newHostnames: {},
       editNicResource: {},
       listIps: {
         loading: false,
@@ -817,6 +841,32 @@ export default {
         this.newSecondaryIp = null
         this.newSecondaryIpDescription = null
         this.fetchPublicIps(this.editNetworkId)
+      })
+    },
+    addSecondaryIpHostname (id) {
+      const hostname = (this.newHostnames[id] || '').trim()
+      if (!hostname || this.loadingNic) return
+      this.loadingNic = true
+      postAPI('addHostnameToNicSecondaryIp', { id, hostname }).then(() => {
+        this.$notification.success({ message: hostname, description: this.$t('message.success.add.hostname') })
+        this.newHostnames[id] = ''
+      }).catch(error => {
+        this.$notifyError(error)
+      }).finally(() => {
+        this.loadingNic = false
+        this.fetchSecondaryIPs(this.selectedNicId)
+      })
+    },
+    removeSecondaryIpHostname (id, hostname) {
+      if (this.loadingNic) return
+      this.loadingNic = true
+      postAPI('removeHostnameFromNicSecondaryIp', { id, hostname }).then(() => {
+        this.$notification.success({ message: hostname, description: this.$t('message.success.remove.hostname') })
+      }).catch(error => {
+        this.$notifyError(error)
+      }).finally(() => {
+        this.loadingNic = false
+        this.fetchSecondaryIPs(this.selectedNicId)
       })
     },
     removeSecondaryIP (id) {

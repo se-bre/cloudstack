@@ -143,6 +143,7 @@
   <bean id="nicExtraDhcpOptionDaoImpl" class="com.cloud.vm.dao.NicExtraDhcpOptionDaoImpl" />
   <bean id="nicNetworkMapDaoImpl" class="com.cloud.vm.dao.NicNetworkMapDaoImpl" />
   <bean id="nicSecondaryIpDaoImpl" class="com.cloud.vm.dao.NicSecondaryIpDaoImpl" />
+  <bean id="nicSecondaryIpHostnameDaoImpl" class="com.cloud.vm.dao.NicSecondaryIpHostnameDaoImpl" />
   <bean id="nicIpAliasDaoImpl" class="com.cloud.vm.dao.NicIpAliasDaoImpl" />
   <bean id="objectInDataStoreDaoImpl" class="org.apache.cloudstack.storage.db.ObjectInDataStoreDaoImpl" />
   <bean id="ovsProviderDaoImpl" class="com.cloud.network.dao.OvsProviderDaoImpl" />

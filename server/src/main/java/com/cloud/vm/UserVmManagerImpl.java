@@ -428,6 +428,7 @@ import com.cloud.vm.dao.NicDao;
 import com.cloud.vm.dao.NicExtraDhcpOptionDao;
 import com.cloud.vm.dao.NicNetworkMapDao;
 import com.cloud.vm.dao.NicNetworkMapVO;
+import com.cloud.vm.dao.NicSecondaryIpHostnameDao;
 import com.cloud.vm.dao.UserVmDao;
 import com.cloud.vm.dao.VMInstanceDao;
 import com.cloud.vm.dao.VMInstanceDetailsDao;
@@ -549,6 +550,8 @@ public class UserVmManagerImpl extends ManagerBase implements UserVmManager, Vir
     private CapacityManager _capacityMgr;
     @Inject
     private VMInstanceDao _vmInstanceDao;
+    @Inject
+    private NicSecondaryIpHostnameDao nicSecondaryIpHostnameDao;
     @Inject
     private ResourceLimitService _resourceLimitMgr;
     @Inject
@@ -1570,7 +1573,8 @@ public class UserVmManagerImpl extends ManagerBase implements UserVmManager, Vir
             //* get all VMs hostNames in the network
             List<String> hostNames = _vmInstanceDao.listDistinctHostNames(network.getId());
             //* verify that there are no duplicates
-            if (hostNames.contains(vmInstance.getHostName())) {
+            if (hostNames.contains(vmInstance.getHostName())
+                    || nicSecondaryIpHostnameDao.findByNetworkIdAndHostname(network.getId(), vmInstance.getHostName().toLowerCase()) != null) {
                 throw new CloudRuntimeException("Network " + network.getName() + " already has an Instance with host name: " + vmInstance.getHostName());
             }
         }
@@ -5104,7 +5108,7 @@ public class UserVmManagerImpl extends ManagerBase implements UserVmManager, Vir
                 // * get all vms hostNames in the network
                 List<String> hostNames = _vmInstanceDao.listDistinctHostNames(ntwkId);
                 // * verify that there are no duplicates
-                if (hostNames.contains(hostName)) {
+                if (hostNames.contains(hostName) || nicSecondaryIpHostnameDao.findByNetworkIdAndHostname(ntwkId, hostName.toLowerCase()) != null) {
                     throw new InvalidParameterValueException("The VM with hostName " + hostName + " already exists in the network domain: " + ntwkDomain.getKey() + "; network = "
                             + ((_networkModel.getNetwork(ntwkId) != null) ? _networkModel.getNetwork(ntwkId).getName() : "<unknown>"));
                 }

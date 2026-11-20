@@ -309,6 +309,7 @@ public class ApiConstants {
     public static final String HOST_IDS = "hostids";
     public static final String HOST_IP = "hostip";
     public static final String HOST_NAME = "hostname";
+    public static final String HOST_NAMES = "hostnames";
     public static final String HOST = "host";
     public static final String HOST_CONTROL_STATE = "hostcontrolstate";
     public static final String HOSTS_MAP = "hostsmap";

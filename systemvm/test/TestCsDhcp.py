@@ -33,6 +33,20 @@ class TestCsDhcp(unittest.TestCase):
         csdhcp = CsDhcp("dhcpentry", {})
         self.assertTrue(csdhcp is not None)
 
+    def test_merge_keeps_one_entry_per_dns_only_hostname(self):
+        import cs_dhcp
+        mac = "02:00:00:00:00:01"
+        primary = {"mac_address": mac, "ipv4_address": "10.1.1.5", "host_name": "vm1"}
+        web = {"mac_address": mac, "ipv4_address": "10.1.1.6", "host_name": "web", "dns_only": True}
+        api = {"mac_address": mac, "ipv4_address": "10.1.1.6", "host_name": "api", "dns_only": True}
+        dbag = {}
+        for entry in (primary, web, api, primary):  # a refreshed primary entry must not evict the hostnames
+            dbag = cs_dhcp.merge(dbag, entry)
+        self.assertEqual(set(dbag), {"10.1.1.5", "10.1.1.6 web", "10.1.1.6 api"})
+        dbag = cs_dhcp.merge(dbag, dict(web, remove=True))
+        self.assertTrue(dbag["10.1.1.6 web"]["remove"])
+        self.assertFalse(dbag["10.1.1.6 api"].get("remove", False))
+
 
 if __name__ == '__main__':
     unittest.main()

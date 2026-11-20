@@ -29,6 +29,7 @@ import com.cloud.offerings.dao.NetworkOfferingDetailsDao;
 import com.cloud.vm.UserVmVO;
 import com.cloud.vm.NicVO;
 import com.cloud.vm.dao.NicDao;
+import com.cloud.vm.dao.NicSecondaryIpDao;
 import org.apache.cloudstack.engine.orchestration.service.NetworkOrchestrationService;
 import org.apache.cloudstack.framework.config.ConfigKey;
 import org.junit.Assert;
@@ -56,6 +57,8 @@ public class DhcpLeaseTimeoutIntegrationTest {
 
     @Mock
     NicDao nicDao;
+    @Mock
+    NicSecondaryIpDao nicSecondaryIpDao;
     @Mock
     NetworkDao networkDao;
     @Mock

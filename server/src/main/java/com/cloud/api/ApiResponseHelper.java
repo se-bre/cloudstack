@@ -458,6 +458,8 @@ import com.cloud.vm.VMInstanceVO;
 import com.cloud.vm.VirtualMachine;
 import com.cloud.vm.VirtualMachine.Type;
 import com.cloud.vm.dao.NicExtraDhcpOptionDao;
+import com.cloud.vm.dao.NicSecondaryIpHostnameDao;
+import com.cloud.vm.dao.NicSecondaryIpHostnameVO;
 import com.cloud.vm.dao.NicSecondaryIpVO;
 import com.cloud.vm.snapshot.VMSnapshot;
 import com.cloud.vm.snapshot.VMSnapshotVO;
@@ -586,6 +588,8 @@ public class ApiResponseHelper implements ResponseGenerator, ResourceIdSupport {
 
     @Inject
     private com.cloud.vm.dao.InstanceGroupDao instanceGroupDao;
+    @Inject
+    private NicSecondaryIpHostnameDao nicSecondaryIpHostnameDao;
 
     @Override
     public UserResponse createUserResponse(User user) {
@@ -4818,6 +4822,10 @@ public class ApiResponseHelper implements ResponseGenerator, ResourceIdSupport {
     }
 
     @Override
+    private List<String> listSecondaryIpHostnames(long nicSecondaryIpId) {
+        return nicSecondaryIpHostnameDao.listByNicSecondaryIpId(nicSecondaryIpId).stream().map(NicSecondaryIpHostnameVO::getHostname).collect(Collectors.toList());
+    }
+
     public NicSecondaryIpResponse createSecondaryIPToNicResponse(NicSecondaryIp result) {
         NicSecondaryIpResponse response = new NicSecondaryIpResponse();
         NicVO nic = _entityMgr.findById(NicVO.class, result.getNicId());
@@ -4827,6 +4835,7 @@ public class ApiResponseHelper implements ResponseGenerator, ResourceIdSupport {
         response.setNicId(nic.getUuid());
         response.setNwId(network.getUuid());
         response.setDescription(result.getDescription());
+        response.setHostnames(listSecondaryIpHostnames(result.getId()));
         response.setObjectName("nicsecondaryip");
         return response;
     }
@@ -4924,6 +4933,7 @@ public class ApiResponseHelper implements ResponseGenerator, ResourceIdSupport {
                     NicSecondaryIpResponse ipRes = new NicSecondaryIpResponse();
                     ipRes.setId(ip.getUuid());
                     ipRes.setDescription(ip.getDescription());
+                    ipRes.setHostnames(listSecondaryIpHostnames(ip.getId()));
                     setResponseIpAddress(ip, ipRes);
                     ipList.add(ipRes);
                 }

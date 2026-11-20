@@ -222,6 +222,7 @@ import com.cloud.utils.exception.ExceptionProxyObject;
 import com.cloud.utils.fsm.NoTransitionException;
 import com.cloud.vm.dao.DomainRouterDao;
 import com.cloud.vm.dao.InstanceGroupDao;
+import com.cloud.vm.dao.NicSecondaryIpHostnameDao;
 import com.cloud.vm.dao.NicDao;
 import com.cloud.vm.dao.NicNetworkMapDao;
 import com.cloud.vm.dao.NicNetworkMapVO;
@@ -239,6 +240,9 @@ public class UserVmManagerImplTest {
 
     @Mock
     private ServiceOfferingDao _serviceOfferingDao;
+
+    @Mock
+    private NicSecondaryIpHostnameDao nicSecondaryIpHostnameDao;
 
     @Mock
     private InternalBackupService internalBackupService;

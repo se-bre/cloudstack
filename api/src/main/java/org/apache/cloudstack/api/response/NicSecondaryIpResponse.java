@@ -57,6 +57,14 @@ public class NicSecondaryIpResponse extends BaseResponse {
     @Param(description = "Description of the secondary IP address")
     private String description;
 
+    @SerializedName(ApiConstants.HOST_NAMES)
+    @Param(description = "Hostnames published on the virtual router for this secondary IP address")
+    private List<String> hostnames;
+
+    public void setHostnames(List<String> hostnames) {
+        this.hostnames = hostnames;
+    }
+
     @Override
     public String getObjectId() {
         return this.getId();

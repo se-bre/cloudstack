@@ -39,6 +39,7 @@ class CsDhcp(CsDataBag):
 
     def process(self):
         self.hosts = {}
+        self.dns_only_hosts = []
         self.changed = []
         self.devinfo = CsHelper.get_device_info()
         self.preseed()
@@ -256,6 +257,8 @@ class CsDhcp(CsDataBag):
         file.repopulate()
         for ip in self.hosts:
             file.add("%s\t%s" % (ip, self.hosts[ip]))
+        for ip, name in self.dns_only_hosts:
+            file.add("%s\t%s" % (ip, name))
         if file.is_changed():
             file.commit()
             logging.info("Updated hosts file")
@@ -263,6 +266,10 @@ class CsDhcp(CsDataBag):
             logging.debug("Hosts file unchanged")
 
     def add(self, entry):
+        if entry.get('dns_only', False):
+            # NIC secondary IP hostname: its own /etc/hosts line, no DHCP lease
+            self.dns_only_hosts.append((entry['ipv4_address'], entry['host_name']))
+            return
         self.add_host(entry['ipv4_address'], entry['host_name'])
         # Lease time is configurable via CloudStack global config dhcp.lease.timeout
         # 0 = infinite (default), otherwise the value represents seconds

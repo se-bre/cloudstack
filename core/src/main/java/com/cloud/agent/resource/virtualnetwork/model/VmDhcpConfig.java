@@ -33,6 +33,7 @@ public class VmDhcpConfig extends ConfigBase {
     // keep this entry from overwriting, or being overwritten by, another entry sharing the same MAC.
     private boolean associatedNetwork;
     private Long leaseTime;
+    private boolean dnsOnly;
 
     // Indicate if the entry should be removed when set to true
     private boolean remove;
@@ -149,6 +150,14 @@ public class VmDhcpConfig extends ConfigBase {
 
     public void setLeaseTime(Long leaseTime) {
         this.leaseTime = leaseTime;
+    }
+
+    public boolean isDnsOnly() {
+        return dnsOnly;
+    }
+
+    public void setDnsOnly(boolean dnsOnly) {
+        this.dnsOnly = dnsOnly;
     }
 
     public boolean isAssociatedNetwork() {

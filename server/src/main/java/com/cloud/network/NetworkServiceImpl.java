@@ -288,6 +288,8 @@ import com.cloud.vm.dao.NicDao;
 import com.cloud.vm.dao.NicNetworkMapDao;
 import com.cloud.vm.dao.NicNetworkMapVO;
 import com.cloud.vm.dao.NicSecondaryIpDao;
+import com.cloud.vm.dao.NicSecondaryIpHostnameDao;
+import com.cloud.vm.dao.NicSecondaryIpHostnameVO;
 import com.cloud.vm.dao.NicSecondaryIpVO;
 import com.cloud.vm.dao.UserVmDao;
 import com.cloud.vm.dao.VMInstanceDao;
@@ -399,6 +401,8 @@ public class NetworkServiceImpl extends ManagerBase implements NetworkService, C
     NetworkModel _networkModel;
     @Inject
     NicSecondaryIpDao _nicSecondaryIpDao;
+    @Inject
+    NicSecondaryIpHostnameDao _nicSecondaryIpHostnameDao;
     @Inject
     PortForwardingRulesDao _portForwardingDao;
     @Inject
@@ -1940,9 +1944,101 @@ public class NetworkServiceImpl extends ManagerBase implements NetworkService, C
         return success;
     }
 
+    @Override
+    public NicSecondaryIp addNicSecondaryIpHostname(long ipAddressId, String hostname) {
+        NicSecondaryIpVO secIpVO = getNicSecondaryIpForHostnameChange(ipAddressId);
+        hostname = normalizeSecondaryIpHostname(hostname);
+        checkSecondaryIpHostnameIsFree(hostname, secIpVO.getNetworkId());
+        _nicSecondaryIpHostnameDao.persist(new NicSecondaryIpHostnameVO(secIpVO.getId(), secIpVO.getNetworkId(), hostname));
+        sendDnsEntryForSecondaryIp(secIpVO, hostname, false);
+        return secIpVO;
+    }
+
+    @Override
+    public NicSecondaryIp removeNicSecondaryIpHostname(long ipAddressId, String hostname) {
+        NicSecondaryIpVO secIpVO = getNicSecondaryIpForHostnameChange(ipAddressId);
+        hostname = normalizeSecondaryIpHostname(hostname);
+        NicSecondaryIpHostnameVO entry = _nicSecondaryIpHostnameDao.findByNetworkIdAndHostname(secIpVO.getNetworkId(), hostname);
+        if (entry == null || entry.getNicSecondaryIpId() != secIpVO.getId()) {
+            throw new InvalidParameterValueException("Hostname " + hostname + " is not assigned to secondary IP " + secIpVO.getIp4Address());
+        }
+        _nicSecondaryIpHostnameDao.remove(entry.getId());
+        sendDnsEntryForSecondaryIp(secIpVO, hostname, true);
+        return secIpVO;
+    }
+
+    private NicSecondaryIpVO getNicSecondaryIpForHostnameChange(long ipAddressId) {
+        NicSecondaryIpVO secIpVO = _nicSecondaryIpDao.findById(ipAddressId);
+        if (secIpVO == null) {
+            throw new InvalidParameterValueException("Unable to find secondary IP address by id");
+        }
+        if (secIpVO.getIp4Address() == null) {
+            throw new InvalidParameterValueException("Hostnames are only supported for IPv4 secondary IP addresses");
+        }
+        UserVmVO vm = _userVmDao.findById(secIpVO.getVmId());
+        if (vm == null) {
+            throw new InvalidParameterValueException("There is no Instance with the given secondary ip");
+        }
+        _accountMgr.checkAccess(CallContext.current().getCallingAccount(), null, true, vm);
+        return secIpVO;
+    }
+
+    /**
+     * RFC 1123 hostname or FQDN: dot-separated labels of 1-63 letters, digits and hyphens (no leading/trailing hyphen),
+     * at most 253 characters; an all-numeric last label is refused so the name can never read as an IP address.
+     */
+    static String normalizeSecondaryIpHostname(String hostname) {
+        String name = StringUtils.trimToEmpty(hostname).toLowerCase();
+        String[] labels = name.split("\\.", -1);
+        boolean valid = !name.isEmpty() && name.length() <= 253 && !labels[labels.length - 1].matches("[0-9]+");
+        for (String label : labels) {
+            valid = valid && NetUtils.verifyDomainNameLabel(label, false);
+        }
+        if (!valid) {
+            throw new InvalidParameterValueException("Invalid hostname " + hostname + ": it must be an RFC 1123 hostname or FQDN (labels of 1-63 letters, digits and hyphens, "
+                    + "not starting or ending with a hyphen, at most 253 characters in total)");
+        }
+        return name;
+    }
+
+    // Same scope as VM hostname uniqueness: the network, plus every tier of its VPC since they share one router.
+    private void checkSecondaryIpHostnameIsFree(String hostname, long networkId) {
+        NetworkVO network = _networksDao.findById(networkId);
+        List<NetworkVO> networks = network.getVpcId() == null ? List.of(network) : _networksDao.listByVpc(network.getVpcId());
+        for (NetworkVO ntwk : networks) {
+            if (_nicSecondaryIpHostnameDao.findByNetworkIdAndHostname(ntwk.getId(), hostname) != null
+                    || _vmDao.listDistinctHostNames(ntwk.getId()).stream().anyMatch(hostname::equalsIgnoreCase)) {
+                throw new InvalidParameterValueException("Hostname " + hostname + " is already in use in network " + ntwk.getName());
+            }
+        }
+    }
+
+    // Skips stopped routers: a router start rebuilds its entries from the DB.
+    private void sendDnsEntryForSecondaryIp(NicSecondaryIpVO secIp, String hostname, boolean remove) {
+        UserVmVO vm = _userVmDao.findById(secIp.getVmId());
+        NicVO nic = _nicDao.findById(secIp.getNicId());
+        if (vm == null || nic == null) {
+            return;
+        }
+        try {
+            for (DomainRouterVO router : routerDao.findByNetwork(secIp.getNetworkId())) {
+                if (router.getState() != VirtualMachine.State.Running) {
+                    continue;
+                }
+                Commands cmds = new Commands(Command.OnError.Stop);
+                commandSetupHelper.createDnsEntryCommand(router, vm, nic, secIp.getIp4Address(), hostname, remove, cmds);
+                networkHelper.sendCommandsToRouter(router, cmds);
+            }
+        } catch (ResourceUnavailableException e) {
+            throw new CloudRuntimeException("Unable to update hostname " + hostname + " on the virtual router: " + e.getMessage(), e);
+        }
+    }
+
     boolean removeNicSecondaryIP(final NicSecondaryIpVO ipVO, final boolean lastIp) {
         final long nicId = ipVO.getNicId();
         final NicVO nic = _nicDao.findById(nicId);
+        // read before the delete below: nic_secondary_ip_hostnames rows go with it (ON DELETE CASCADE)
+        final List<NicSecondaryIpHostnameVO> hostnames = _nicSecondaryIpHostnameDao.listByNicSecondaryIpId(ipVO.getId());
 
         Transaction.execute(new TransactionCallbackNoReturn() {
             @Override
@@ -1959,6 +2055,14 @@ public class NetworkServiceImpl extends ManagerBase implements NetworkService, C
         });
 
         _messageBus.publish(_name, MESSAGE_RELEASE_NIC_SECONDARY_IP_EVENT, PublishScope.LOCAL, ipVO);
+
+        for (NicSecondaryIpHostnameVO hostname : hostnames) {
+            try {
+                sendDnsEntryForSecondaryIp(ipVO, hostname.getHostname(), true);
+            } catch (CloudRuntimeException e) {
+                logger.warn("Unable to remove hostname {} of released secondary IP {} from the virtual router", hostname.getHostname(), ipVO.getIp4Address(), e);
+            }
+        }
 
         return true;
     }

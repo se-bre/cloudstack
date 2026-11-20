@@ -19,6 +19,10 @@ import logging
 from netaddr import *
 
 
+def shares_mac(entry):
+    return entry.get('associated_network', False) or entry.get('dns_only', False)
+
+
 def merge(dbag, data):
     # A duplicate ip address wil clobber the old value
     # This seems desirable ....
@@ -31,16 +35,19 @@ def merge(dbag, data):
         # this MAC when the incoming entry is itself not an associated-network entry, and only replace
         # an existing entry that is also not one - otherwise an association's push would delete the
         # nic's own primary entry (or a sibling association's), and vice versa.
-        if not data.get('associated_network', False):
+        # A dns_only entry (NIC secondary IP hostname) likewise shares its nic's MAC with the primary entry.
+        if not shares_mac(data):
             remove_keys = set()
             for key, entry in dbag.items():
-                if key != 'id' and entry['mac_address'] == data['mac_address'] and not entry.get('associated_network', False):
+                if key != 'id' and entry['mac_address'] == data['mac_address'] and not shares_mac(entry):
                     remove_keys.add(key)
                     break
 
             for remove_key in remove_keys:
                 del dbag[remove_key]
 
-        dbag[data['ipv4_address']] = data
+        # one entry per hostname for dns_only, so several names on one secondary IP coexist
+        key = "%s %s" % (data['ipv4_address'], data['host_name']) if data.get('dns_only', False) else data['ipv4_address']
+        dbag[key] = data
 
     return dbag

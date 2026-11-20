@@ -119,7 +119,12 @@ import com.cloud.network.vo.PublicIpQuarantineVO;
 import com.cloud.vm.UserVmVO;
 import com.cloud.vm.dao.NicNetworkMapDao;
 import com.cloud.vm.dao.NicNetworkMapVO;
+import com.cloud.vm.dao.NicSecondaryIpDao;
+import com.cloud.vm.dao.NicSecondaryIpHostnameDao;
+import com.cloud.vm.dao.NicSecondaryIpHostnameVO;
+import com.cloud.vm.dao.NicSecondaryIpVO;
 import com.cloud.vm.dao.UserVmDao;
+import com.cloud.vm.dao.VMInstanceDao;
 import com.cloud.vm.snapshot.VMSnapshotVO;
 import com.cloud.vm.snapshot.dao.VMSnapshotDao;
 import com.cloud.network.vpc.VpcManager;
@@ -259,6 +264,12 @@ public class NetworkServiceImplTest {
     @Mock
     CommandSetupHelper commandSetupHelper;
     @Mock
+    NicSecondaryIpDao nicSecondaryIpDao;
+    @Mock
+    NicSecondaryIpHostnameDao nicSecondaryIpHostnameDao;
+    @Mock
+    VMInstanceDao vmInstanceDao;
+    @Mock
     private Account accountMock;
 
     @Mock
@@ -385,6 +396,9 @@ public class NetworkServiceImplTest {
         service._ipAddressDao = ipAddressDao;
         service.routerDao = routerDao;
         service.commandSetupHelper = commandSetupHelper;
+        service._nicSecondaryIpDao = nicSecondaryIpDao;
+        service._nicSecondaryIpHostnameDao = nicSecondaryIpHostnameDao;
+        service._vmDao = vmInstanceDao;
         service.networkHelper = networkHelper;
         service._ipAddrMgr = ipAddressManagerMock;
         service.nsxProviderDao = nsxProviderDao;
@@ -2551,5 +2565,41 @@ public class NetworkServiceImplTest {
         assertAsyncActionEvent("associateNetworkToNic", AssociateNetworkToNicCmd.class, EventTypes.EVENT_NIC_NETWORK_ASSOCIATE);
         assertAsyncActionEvent("disassociateNetworkFromNic", DisassociateNetworkFromNicCmd.class, EventTypes.EVENT_NIC_NETWORK_DISASSOCIATE);
         assertAsyncActionEvent("changeNicPrimaryNetwork", ChangeNicPrimaryNetworkCmd.class, EventTypes.EVENT_NIC_PRIMARY_NETWORK_CHANGE);
+    }
+
+    @Test
+    public void normalizeSecondaryIpHostnameAcceptsRfc1123NamesOnly() {
+        Assert.assertEquals("web", NetworkServiceImpl.normalizeSecondaryIpHostname(" WEB "));
+        Assert.assertEquals("1web.example.com", NetworkServiceImpl.normalizeSecondaryIpHostname("1web.example.com"));
+        for (String bad : new String[] {"", "bad_name", "-web", "web-", "web..example", "web.", "10.1.1.6", "a".repeat(64), ("a".repeat(63) + ".").repeat(4) + "a"}) {
+            Assert.assertThrows(bad, InvalidParameterValueException.class, () -> NetworkServiceImpl.normalizeSecondaryIpHostname(bad));
+        }
+    }
+
+    @Test
+    public void addNicSecondaryIpHostnamePushesOneEntryAndRefusesNamesInUse() throws Exception {
+        registerCallContext();
+        NicSecondaryIpVO secIp = new NicSecondaryIpVO(10L, "10.1.1.6", null, 20L, ACCOUNT_ID, 1L, 205L, null);
+        Mockito.when(nicSecondaryIpDao.findById(1L)).thenReturn(secIp);
+        Mockito.when(userVmDao.findById(20L)).thenReturn(Mockito.mock(UserVmVO.class));
+        Mockito.when(nicDao.findById(10L)).thenReturn(Mockito.mock(NicVO.class));
+        NetworkVO net = Mockito.mock(NetworkVO.class);
+        Mockito.when(net.getId()).thenReturn(205L);
+        Mockito.when(networkDao.findById(205L)).thenReturn(net);
+        Mockito.when(vmInstanceDao.listDistinctHostNames(205L)).thenReturn(List.of("vm1"));
+        DomainRouterVO router = Mockito.mock(DomainRouterVO.class);
+        Mockito.when(router.getState()).thenReturn(VirtualMachine.State.Running);
+        Mockito.when(routerDao.findByNetwork(205L)).thenReturn(Arrays.asList(router));
+
+        service.addNicSecondaryIpHostname(1L, "Web");
+        Mockito.verify(nicSecondaryIpHostnameDao).persist(Mockito.argThat(h -> h.getHostname().equals("web") && h.getNetworkId() == 205L));
+        Mockito.verify(commandSetupHelper).createDnsEntryCommand(Mockito.eq(router), Mockito.any(), Mockito.any(), Mockito.eq("10.1.1.6"),
+                Mockito.eq("web"), Mockito.eq(false), Mockito.any());
+
+        Assert.assertThrows(InvalidParameterValueException.class, () -> service.addNicSecondaryIpHostname(1L, "VM1"));
+        Mockito.when(nicSecondaryIpHostnameDao.findByNetworkIdAndHostname(205L, "web")).thenReturn(new NicSecondaryIpHostnameVO(99L, 205L, "web"));
+        Assert.assertThrows(InvalidParameterValueException.class, () -> service.addNicSecondaryIpHostname(1L, "web"));
+        // assigned to another secondary IP (id 99), so it cannot be removed through this one
+        Assert.assertThrows(InvalidParameterValueException.class, () -> service.removeNicSecondaryIpHostname(1L, "web"));
     }
 }

@@ -935,6 +935,16 @@ public class MockNetworkManagerImpl extends ManagerBase implements NetworkOrches
     }
 
     @Override
+    public NicSecondaryIp addNicSecondaryIpHostname(long ipAddressId, String hostname) {
+        return null;
+    }
+
+    @Override
+    public NicSecondaryIp removeNicSecondaryIpHostname(long ipAddressId, String hostname) {
+        return null;
+    }
+
+    @Override
     public List<? extends Nic> listVmNics(long vmId, Long nicId, Long networkId, String keyword) {
         // TODO Auto-generated method stub
         return null;

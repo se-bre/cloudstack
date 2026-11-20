@@ -163,6 +163,10 @@ import com.cloud.vm.dao.NicIpAliasDao;
 import com.cloud.vm.dao.NicIpAliasVO;
 import com.cloud.vm.dao.NicNetworkMapDao;
 import com.cloud.vm.dao.NicNetworkMapVO;
+import com.cloud.vm.dao.NicSecondaryIpDao;
+import com.cloud.vm.dao.NicSecondaryIpHostnameDao;
+import com.cloud.vm.dao.NicSecondaryIpHostnameVO;
+import com.cloud.vm.dao.NicSecondaryIpVO;
 import com.cloud.vm.dao.UserVmDao;
 import com.google.gson.Gson;
 
@@ -181,6 +185,10 @@ public class CommandSetupHelper {
     private NicDao _nicDao;
     @Inject
     private NicNetworkMapDao _nicNetworkMapDao;
+    @Inject
+    private NicSecondaryIpDao _nicSecondaryIpDao;
+    @Inject
+    private NicSecondaryIpHostnameDao _nicSecondaryIpHostnameDao;
     @Inject
     private NetworkDao _networkDao;
     @Inject
@@ -291,7 +299,13 @@ public class CommandSetupHelper {
 
     public void createDhcpEntryCommand(final VirtualRouter router, final UserVm vm, final NicVO nic, boolean remove, final Commands cmds) {
         createDhcpEntryCommand(router, vm, nic.getMacAddress(), nic.getIPv4Address(), nic.getIPv6Address(), nic.getIPv4Gateway(), nic.getIPv6Gateway(),
-                nic.getNetworkId(), nic.isDefaultNic(), remove, false, cmds);
+                nic.getNetworkId(), nic.isDefaultNic(), remove, false, vm.getHostName(), false, cmds);
+        // Secondary IP hostnames follow the nic's own entry: VM start and VR rebuild re-add them, nic removal / VM expunge drops them.
+        for (final NicSecondaryIpVO secIp : _nicSecondaryIpDao.listByNicId(nic.getId())) {
+            for (final NicSecondaryIpHostnameVO hostname : _nicSecondaryIpHostnameDao.listByNicSecondaryIpId(secIp.getId())) {
+                createDnsEntryCommand(router, vm, nic, secIp.getIp4Address(), hostname.getHostname(), remove, cmds);
+            }
+        }
     }
 
     // Same as createDhcpEntryCommand(router, vm, NicVO, ...), but for a nic's association with a network other
@@ -300,13 +314,19 @@ public class CommandSetupHelper {
     // one overload every trunk-association DHCP push goes through, directly (never via the NicVO overload above).
     public void createDhcpEntryCommand(final VirtualRouter router, final UserVm vm, final String macAddress, final String ip4Address, final String ip6Address,
             final String ip4Gateway, final String ip6Gateway, final long networkId, final boolean isDefaultNic, boolean remove, final Commands cmds) {
-        createDhcpEntryCommand(router, vm, macAddress, ip4Address, ip6Address, ip4Gateway, ip6Gateway, networkId, isDefaultNic, remove, true, cmds);
+        createDhcpEntryCommand(router, vm, macAddress, ip4Address, ip6Address, ip4Gateway, ip6Gateway, networkId, isDefaultNic, remove, true, vm.getHostName(), false, cmds);
+    }
+
+    // Hostname-only entry for a NIC secondary IP: lands in the VR's /etc/hosts, creates no DHCP lease.
+    public void createDnsEntryCommand(final VirtualRouter router, final UserVm vm, final NicVO nic, final String ip4Address, final String hostName,
+            final boolean remove, final Commands cmds) {
+        createDhcpEntryCommand(router, vm, nic.getMacAddress(), ip4Address, null, null, null, nic.getNetworkId(), false, remove, false, hostName, true, cmds);
     }
 
     private void createDhcpEntryCommand(final VirtualRouter router, final UserVm vm, final String macAddress, final String ip4Address, final String ip6Address,
             final String ip4Gateway, final String ip6Gateway, final long networkId, final boolean isDefaultNic, boolean remove, final boolean isAssociatedNetwork,
-            final Commands cmds) {
-        final DhcpEntryCommand dhcpCommand = new DhcpEntryCommand(macAddress, ip4Address, vm.getHostName(), ip6Address,
+            final String hostName, final boolean dnsOnly, final Commands cmds) {
+        final DhcpEntryCommand dhcpCommand = new DhcpEntryCommand(macAddress, ip4Address, hostName, ip6Address,
                 _networkModel.getExecuteInSeqNtwkElmtCmd());
 
         final DataCenterVO dcVo = _dcDao.findById(router.getDataCenterId());
@@ -322,6 +342,7 @@ public class CommandSetupHelper {
         dhcpCommand.setDuid(NetUtils.getDuidLL(macAddress));
         dhcpCommand.setDefault(isDefaultNic);
         dhcpCommand.setAssociatedNetwork(isAssociatedNetwork);
+        dhcpCommand.setDnsOnly(dnsOnly);
         dhcpCommand.setRemove(remove);
 
         // Set DHCP lease timeout from zone-scoped config (0 = infinite)

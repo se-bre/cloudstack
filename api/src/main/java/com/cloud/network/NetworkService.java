@@ -240,6 +240,10 @@ public interface NetworkService {
 
     boolean releaseSecondaryIpFromNic(long ipAddressId);
 
+    NicSecondaryIp addNicSecondaryIpHostname(long ipAddressId, String hostname);
+
+    NicSecondaryIp removeNicSecondaryIpHostname(long ipAddressId, String hostname);
+
     /**
      * lists the NIC information
      */
